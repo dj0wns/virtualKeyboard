@@ -13,6 +13,11 @@
 
 #define INITIAL_CHAR '1'
 
+#define SPACE_WEIGHT_INCREMENT 2
+#define SPACE_WEIGHT_MAX 10
+#define CURSOR_WEIGHT_INCREMENT 2
+#define CURSOR_WEIGHT_MAX 10
+
 const char keyboard[KEYBOARD_HEIGHT][KEYBOARD_WIDTH] = {
 	{'1','2','3','4','5','6','7','8','9','0'},
 	{'q','w','e','r','t','y','u','i','o','p'},
@@ -41,7 +46,7 @@ typedef struct {
 } movedata;
 
 void generateCoords(coordinates*);
-unsigned int nearestNeighbor(coordinates*, char*, char*, char*, char*, int, int, int, int, int, int);
+unsigned int nearestNeighbor(coordinates*, char*, char*, char*, char*, int, int, int, int, int, int, int);
 int calcDistance(coordinates*, char, char, movedata*);
 
 int main(int argc, char **argv){
@@ -59,39 +64,41 @@ int main(int argc, char **argv){
 		char *workingString =  malloc(len * sizeof(char));
 		generateCoords(coords);
 		movedata data;
-		for(int weight = 1; weight < 20; weight ++){
-			for(int i = 0; i<len; i++){
-				//zero out arrays
-				moveCursor = 0;
-				capsLock = 0;
-				memset(moves, 0, MOVEMENT_ARRAY_LEN);
-				memset(workingString, 0, len);
-				workingString[0] = argv[1][i];
-				//add initial moves
-				temp = calcDistance(coords, INITIAL_CHAR, argv[1][i], &data);
-				
-				for(int j = 0; j < data.xmove; j++){
-					moves[moveCursor] = data.xdir == right ? 'R' : 'L';
-					moveCursor++;
-				}
-				for(int j = 0; j < data.ymove; j++){
-					moves[moveCursor] = data.ydir == up ? 'U' : 'D';
-					moveCursor++;
-				}
-				if((capsLock==0) != (isupper(argv[1][i])==0)){
-					moves[moveCursor] = 'C';
-					capsLock = capsLock == 0 ? 1 : 0;
-					moveCursor++;
+		for(int spaceWeight = 1; spaceWeight < SPACE_WEIGHT_MAX; spaceWeight += SPACE_WEIGHT_INCREMENT){
+			for(int cursorWeight = 1; cursorWeight < CURSOR_WEIGHT_MAX; cursorWeight+= CURSOR_WEIGHT_INCREMENT){
+				for(int i = 0; i<len; i++){
+					//zero out arrays
+					moveCursor = 0;
+					capsLock = 0;
+					memset(moves, 0, MOVEMENT_ARRAY_LEN);
+					memset(workingString, 0, len);
+					workingString[0] = argv[1][i];
+					//add initial moves
+					temp = calcDistance(coords, INITIAL_CHAR, argv[1][i], &data);
+					
+					for(int j = 0; j < data.xmove; j++){
+						moves[moveCursor] = data.xdir == right ? 'R' : 'L';
+						moveCursor++;
+					}
+					for(int j = 0; j < data.ymove; j++){
+						moves[moveCursor] = data.ydir == up ? 'U' : 'D';
+						moveCursor++;
+					}
+					if((capsLock==0) != (isupper(argv[1][i])==0)){
+						moves[moveCursor] = 'C';
+						capsLock = capsLock == 0 ? 1 : 0;
+						moveCursor++;
+						temp++;
+					}
+					moves[moveCursor] = 'A';
 					temp++;
+					temp += nearestNeighbor(coords, moves, argv[1], argv[1], workingString, i ,len, len, 1, capsLock, cursorWeight, spaceWeight);
+					if(temp < min){
+						printf("%s\t%s\t%i\n", moves, workingString, temp);
+						min = temp;
+					}
+				
 				}
-				moves[moveCursor] = 'A';
-				temp++;
-				temp += nearestNeighbor(coords, moves, argv[1], argv[1], workingString, i ,len, len, 1, weight, capsLock);
-				if(temp < min){
-					printf("%s\t%s\t%i\n", moves, workingString, temp);
-					min = temp;
-				}
-			
 			}
 		}
 		free(workingString);
@@ -189,7 +196,7 @@ void insertAt(char* str, char toIns, int index){
 
 unsigned int nearestNeighbor(coordinates* coords, char* moves, char* og, 
 		char* input, char* workingString, int index, int lenOG, int len,  
-		int cursor, int weight, int capsLock){
+		int cursor, int capsLock, int cursorWeight, int spaceWeight){
 	if(len  == 1){
 		return 0;
 	}
@@ -205,11 +212,11 @@ unsigned int nearestNeighbor(coordinates* coords, char* moves, char* og,
 	for(int i = 0; i < len-1; i++){
 		dist = calcDistance(coords, input[index], newString[i], &data);
 		cursorDist = calcCursorMoves(og, workingString, newString[i], cursor, lenOG);
-		if(dist + weight * abs(cursorDist) + ((capsLock==0) != (isupper(newString[i])==0)) < best){
+		if(dist + cursorWeight * abs(cursorDist) + spaceWeight * (newString[i] == ' ') + ((capsLock==0) != (isupper(newString[i])==0)) < best){
 	//		printf("%c %c %i %i\n", workingString[cursor], newString[i], cursorDist, cursor);
 			bestDist = cursorDist;
 			bestCursor = cursor + cursorDist;
-			best = dist + weight * abs(cursorDist) + ((capsLock==0) != (isupper(newString[i])==0));
+			best = dist + cursorWeight * abs(cursorDist) + spaceWeight * (newString[i] == ' ') + ((capsLock==0) != (isupper(newString[i])==0));
 			bestChar = newString[i];
 			bestIndex = i;
 			memcpy(&bestData, &data, sizeof(data));
@@ -241,11 +248,11 @@ unsigned int nearestNeighbor(coordinates* coords, char* moves, char* og,
 		moves[i] = 'Y';
 	}
 	//remove weight
-	best -= weight * abs(bestDist);
-
+	best -= cursorWeight * abs(bestDist);
+	best -= spaceWeight * (bestChar==' ');
 	insertAt(workingString, bestChar, bestCursor);
 	int max = nearestNeighbor(coords, moves, og, newString, workingString, 
-			 bestIndex, lenOG, len-1, bestCursor+1, weight, capsLock);
+			 bestIndex, lenOG, len-1, bestCursor+1, capsLock, cursorWeight, spaceWeight);
 	//the 1 is for the actual click
 	return max + best + 1 + abs(bestDist);
 }
